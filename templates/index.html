@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KibokoDAO Quests</title>
+    <!-- Ensure CSS is correctly linked -->
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- KibokoDAO Logo Centered -->
+        <div class="logo-container">
+            <img src="https://amaranth-accused-buzzard-564.mypinata.cloud/ipfs/QmekE1RV43KkBeXvtizpUzuxxcW7HVco9PSVSPMaW2rgdZ" alt="KibokoDAO Logo" class="logo">
+        </div>
+
+        <hr class="divider">
+        
+        <h1>Welcome To KibokoDAO Quests</h1>
+        
+        <button id="connectWallet" class="btn">Connect Phantom Wallet</button>
+
+        <div id="socials" style="display:none;">
+            <h3>Complete Quests to Earn $MLNK Tokens</h3>
+            <button id="loginTwitter" class="btn">Login with Twitter</button>
+            <button id="loginLinkedIn" class="btn">Login with LinkedIn</button>
+            <button id="loginFacebook" class="btn">Login with Facebook</button>
+            <button id="joinTelegram" class="btn">Join Telegram</button>
+        </div>
+
+        <button id="completeQuests" class="btn" style="display:none;">Complete Quests & Get Tokens</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.3.5/web3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <script>
+         // Phantom Wallet Connection
+    document.getElementById('connectWallet').onclick = async function () {
+        if (window.solana && window.solana.isPhantom) {
+            const response = await window.solana.connect();
+            const walletAddress = response.publicKey.toString();
+
+            // Display a truncated wallet address for better UI
+            const truncatedAddress = walletAddress.slice(0, 4) + '...' + walletAddress.slice(-4);
+            document.getElementById('connectWallet').textContent = truncatedAddress;
+
+            // Send wallet address to Flask backend
+            fetch('/connect_wallet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wallet_address: walletAddress })
+            }).then(res => res.json()).then(data => {
+                document.getElementById('socials').style.display = 'block';
+            });
+        } else {
+            alert("Please install Phantom Wallet");
+        }
+    };
+        // Quest Completion
+        document.getElementById('completeQuests').onclick = function () {
+            const quests = {
+                twitter: true,  // After authentication
+                linkedin: true,
+                facebook: true,
+                telegram: true
+            };
+            fetch('/complete_quest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quests: quests })
+            }).then(res => res.json()).then(data => {
+                alert(data.message);
+            });
+        };
+    </script>
+</body>
+</html>
