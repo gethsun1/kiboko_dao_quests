@@ -8,6 +8,7 @@ from solana.rpc.commitment import Confirmed
 from spl.token.constants import TOKEN_PROGRAM_ID
 from solana.rpc.types import TxOpts
 from solders.keypair import Keypair
+from spl.token.instructions import get_associated_token_address
 
 import os, json, requests
 from dotenv import load_dotenv
@@ -32,7 +33,7 @@ twitter = oauth.remote_app(
 )
 
 # Twitter account to check if followed
-KIBOKO_TWITTER_ID = 'KIBOKO_TWITTER_ID' 
+KIBOKO_TWITTER_ID = 'KIBOKO_TWITTER_ID'
 
 @app.route('/')
 def index():
@@ -55,9 +56,9 @@ def twitter_authorized():
     response = twitter.authorized_response()
     if response is None or response.get('oauth_token') is None:
         return 'Access denied: reason={} error={}'.format(request.args['error_reason'], request.args['error_description'])
-    
+
     session['twitter_token'] = (response['oauth_token'], response['oauth_token_secret'])
-    
+
     # Check if user follows KibokoDAO
     if check_if_follows_kiboko():
         session['twitter_following'] = True
@@ -81,18 +82,18 @@ def check_if_follows_kiboko():
         "Authorization": f"Bearer {twitter_token[0]}"
     }
     response = requests.get(url, headers=headers)
-    
+
     if response.status_code == 200:
         data = response.json()
         return data['relationship']['source']['following']  # Check if following KibokoDAO
-    
+
     return False
 
 @app.route('/complete_quest', methods=['POST'])
 async def complete_quest():
     data = json.loads(request.data)
     quests_completed = data['quests']
-    
+
     # Ensure all quests are completed and user follows KibokoDAO on Twitter
     if all(quests_completed.values()) and session.get('twitter_following', False):
         user_wallet = session.get('wallet_address')
@@ -102,29 +103,40 @@ async def complete_quest():
             return jsonify({"status": "success", "message": "100 MLNK Tokens dripped!"})
         else:
             return jsonify({"status": "fail", "message": "Token transfer failed. Try again later."})
-    
+
     return jsonify({"status": "fail", "message": "Complete all quests and follow KibokoDAO on Twitter to receive rewards."})
 
-# Token drip function
+@app.route('/claim_mlink', methods=['POST'])
+async def claim_mlink():
+    data = json.loads(request.data)
+    user_wallet = data['wallet_address']
+    
+    # Logic for sending 100 MLNK tokens to the user's wallet
+    success = await send_mlnk_tokens(user_wallet)  # Call the function to send tokens
+    if success:
+        return jsonify({"status": "success", "message": "100 MLNK Tokens claimed!"})
+    return jsonify({"status": "fail", "message": "Token claim failed. Try again later."})
+
+
+
+
+
 async def send_mlnk_tokens(user_wallet):
     try:
-        # Set up the Solana client
         client = AsyncClient("https://api.mainnet-beta.solana.com", commitment=Confirmed)
-        
-        # Your sender's public key and private keypair
-        sender =Pubkey (os.getenv("SOLANA_WALLET_ADDRESS"))  # Sender's public key
+        sender = Pubkey(os.getenv("SOLANA_WALLET_ADDRESS"))  # Sender's public key
         recipient = Pubkey(user_wallet)  # Recipient's wallet public key
-        
+
         # Load the private key for the sender and parse it to a Keypair
         private_key = os.getenv("SOLANA_PRIVATE_KEY")
         sender_keypair = Keypair.from_secret_key(bytes(map(int, private_key.split(','))))
 
         # Define the token mint address
-        token_mint_address =Pubkey (os.getenv("YOUR_TOKEN_MINT_ADDRESS"))  # MLNK token mint address
-        
+        token_mint_address = Pubkey(os.getenv("TOKEN_MINT_ADDRESS"))  # MLNK token mint address
+
         # Define the token accounts (associated token accounts for both sender and recipient)
-        sender_token_account = Pubkey(os.getenv("YOUR_SENDER_TOKEN_ACCOUNT_ADDRESS"))  # Associated token account of the sender
-        recipient_token_account = await find_associated_token_address(recipient, token_mint_address)
+        sender_token_account = Pubkey(os.getenv("SENDER_TOKEN_ACCOUNT_ADDRESS"))  # Associated token account of the sender
+        recipient_token_account = await get_associated_token_address(recipient, token_mint_address)
 
         # Create the transfer transaction for 100 MLNK tokens (adjust decimals based on the token's configuration)
         transaction = Transaction().add(
@@ -156,11 +168,6 @@ async def send_mlnk_tokens(user_wallet):
     except Exception as e:
         print(f"Exception occurred during token transfer: {e}")
         return False
-
-# Helper function to find the associated token address
-async def find_associated_token_address(wallet_address, mint_address):
-    from spl.token.instructions import get_associated_token_address
-    return await get_associated_token_address(wallet_address, mint_address)
 
 if __name__ == '__main__':
     app.run(debug=True)
