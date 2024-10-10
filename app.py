@@ -35,21 +35,25 @@ twitter = oauth.remote_app(
 # Twitter account to check if followed
 KIBOKO_TWITTER_ID = 'KIBOKO_TWITTER_ID'
 
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @app.route('/connect_wallet', methods=['POST'])
-def connect_wallet():
+async def connect_wallet():
     data = json.loads(request.data)
     user_wallet = data['wallet_address']
     session['wallet_address'] = user_wallet  # Save wallet address in session
     return jsonify({"status": "success", "message": "Wallet connected", "wallet": user_wallet})
 
+
 # Twitter OAuth flow
 @app.route('/login_twitter')
 def login_twitter():
     return twitter.authorize(callback=url_for('twitter_authorized', _external=True))
+
 
 @app.route('/twitter_authorized')
 def twitter_authorized():
@@ -66,9 +70,11 @@ def twitter_authorized():
     else:
         return redirect(url_for('index', success=False, message="Please follow KibokoDAO on Twitter to proceed."))
 
+
 @twitter.tokengetter
 def get_twitter_oauth_token():
     return session.get('twitter_token')
+
 
 # Check if the user follows KibokoDAO
 def check_if_follows_kiboko():
@@ -89,6 +95,7 @@ def check_if_follows_kiboko():
 
     return False
 
+
 @app.route('/complete_quest', methods=['POST'])
 async def complete_quest():
     data = json.loads(request.data)
@@ -97,8 +104,9 @@ async def complete_quest():
     # Ensure all quests are completed and user follows KibokoDAO on Twitter
     if all(quests_completed.values()) and session.get('twitter_following', False):
         user_wallet = session.get('wallet_address')
+
         # Trigger token distribution asynchronously
-        success = await send_mlnk_tokens(user_wallet)  # Make this async
+        success = await send_mlnk_tokens(user_wallet)
         if success:
             return jsonify({"status": "success", "message": "100 MLNK Tokens dripped!"})
         else:
@@ -106,24 +114,26 @@ async def complete_quest():
 
     return jsonify({"status": "fail", "message": "Complete all quests and follow KibokoDAO on Twitter to receive rewards."})
 
+
 @app.route('/claim_mlink', methods=['POST'])
 async def claim_mlink():
     data = json.loads(request.data)
     user_wallet = data['wallet_address']
-    
+
     # Logic for sending 100 MLNK tokens to the user's wallet
-    success = await send_mlnk_tokens(user_wallet)  # Call the function to send tokens
+    success = await send_mlnk_tokens(user_wallet)
     if success:
         return jsonify({"status": "success", "message": "100 MLNK Tokens claimed!"})
     return jsonify({"status": "fail", "message": "Token claim failed. Try again later."})
 
 
-
-
-
 async def send_mlnk_tokens(user_wallet):
+    client = None
     try:
+        # Set up Solana Async client
         client = AsyncClient("https://api.mainnet-beta.solana.com", commitment=Confirmed)
+
+        # Sender and recipient
         sender = Pubkey(os.getenv("SOLANA_WALLET_ADDRESS"))  # Sender's public key
         recipient = Pubkey(user_wallet)  # Recipient's wallet public key
 
@@ -131,10 +141,8 @@ async def send_mlnk_tokens(user_wallet):
         private_key = os.getenv("SOLANA_PRIVATE_KEY")
         sender_keypair = Keypair.from_secret_key(bytes(map(int, private_key.split(','))))
 
-        # Define the token mint address
+        # Define the token mint and accounts (associated token accounts for both sender and recipient)
         token_mint_address = Pubkey(os.getenv("TOKEN_MINT_ADDRESS"))  # MLNK token mint address
-
-        # Define the token accounts (associated token accounts for both sender and recipient)
         sender_token_account = Pubkey(os.getenv("SENDER_TOKEN_ACCOUNT_ADDRESS"))  # Associated token account of the sender
         recipient_token_account = await get_associated_token_address(recipient, token_mint_address)
 
@@ -146,16 +154,13 @@ async def send_mlnk_tokens(user_wallet):
                     source=sender_token_account,
                     dest=recipient_token_account,
                     owner=sender,
-                    amount=100 * (10 ** 9)  # Adjust this amount based on token decimals
+                    amount=100 * (10 ** 9)  # Adjust for token decimals
                 )
             )
         )
 
         # Send the transaction
         response = await client.send_transaction(transaction, sender_keypair, opts=TxOpts(skip_confirmation=False))
-
-        # Close the Solana client connection
-        await client.close()
 
         # Check response
         if response and 'result' in response:
@@ -168,6 +173,12 @@ async def send_mlnk_tokens(user_wallet):
     except Exception as e:
         print(f"Exception occurred during token transfer: {e}")
         return False
+
+    finally:
+        # Ensure the Solana client connection is closed
+        if client:
+            await client.close()
+
 
 if __name__ == '__main__':
     app.run(debug=True)
